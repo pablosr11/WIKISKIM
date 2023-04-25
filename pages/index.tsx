@@ -7,7 +7,7 @@ import JSZip from "jszip";
 
 const inter = Inter({ subsets: ["latin"] });
 const wikipediaUrlPattern = new RegExp(
-  "^https:\\/\\/(?:[a-z]+\\.)?wikipedia\\.org\\/wiki\\/[\\w\\-\\(\\)]+$"
+  "^https:\\/\\/(?:[a-z]+\\.)*wikipedia\\.org\\/wiki\\/[\\w\\-\\(\\)\\-]+$"
 );
 
 export default function Home() {
