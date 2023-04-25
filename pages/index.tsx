@@ -105,7 +105,7 @@ export default function Home() {
         const response = await fetch(apiUrl);
 
         await new Promise((resolve) =>
-          setTimeout(resolve, Math.random() * 400 + 100)
+          setTimeout(resolve, Math.random() * 200 + 50)
         );
         if (!response.ok) {
           throw new Error(
