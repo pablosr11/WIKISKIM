@@ -6,3 +6,4 @@
 - build + download epub instead of zip
 - check other languages
 - include images?
+- what to do wrt "dangerous" articles?
