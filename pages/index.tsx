@@ -88,7 +88,7 @@ export default function Home() {
     const links = doc.querySelectorAll("a");
 
     for (let i = 0; i < links.length; i++) {
-      setTracker([i + 1, links.length]);
+      setTracker([i + 1, links.length + 1]);
       const link = links[i];
       const href = link.getAttribute("href");
       if (href && href.includes("/wiki/")) {
