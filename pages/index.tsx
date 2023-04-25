@@ -98,16 +98,14 @@ export default function Home() {
           action: "parse",
           format: "json",
           prop: "text",
-          redirect: "true",
-          page: title, //
+          page: title,
           origin: "*",
         }).toString();
 
         const response = await fetch(apiUrl);
 
-        // sleep 0.2 - 1 seconds
         await new Promise((resolve) =>
-          setTimeout(resolve, Math.random() * 800 + 200)
+          setTimeout(resolve, Math.random() * 400 + 100)
         );
         if (!response.ok) {
           throw new Error(
