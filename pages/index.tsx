@@ -10,7 +10,7 @@ const wikipediaUrlPattern = new RegExp(
 );
 
 export default function Home() {
-  async function getWikipediaHtml(url: URL): Promise<string> {
+  async function getWikipediaHtml(url: URL): Promise<void> {
     var zip = new JSZip();
     const apiUrl = new URL("https://en.wikipedia.org/w/api.php");
     const title = url.pathname.split("/").pop();
@@ -164,8 +164,6 @@ export default function Home() {
     const content = await zip.generateAsync({ type: "blob" });
 
     saveAs(content, `${title}.zip`);
-
-    return blob;
   }
 
   async function isValidWikipediaUrl(urlString: string): Promise<boolean> {
