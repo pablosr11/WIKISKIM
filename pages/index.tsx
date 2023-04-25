@@ -119,13 +119,49 @@ export default function Home() {
         const data = await response.json();
         const page = data.parse;
 
-        if (!page) {
+        if (!page || !page.text) {
           continue;
         }
 
         // parse the html
         const parser = new DOMParser();
-        const doc = parser.parseFromString(page.text["*"], "text/html");
+        let doc = parser.parseFromString(page.text["*"], "text/html");
+
+        // if is less than 20kb, check if it contains "Redirect to:" then extract "/wiki/*" and download that
+        if (doc.documentElement.innerHTML.length < 20000) {
+          const redirect = doc
+            .querySelector("a")
+            ?.getAttribute("href")
+            ?.split("/wiki/")
+            .pop();
+          if (redirect) {
+            const apiUrl = new URL("https://en.wikipedia.org/w/api.php");
+            apiUrl.search = new URLSearchParams({
+              action: "parse",
+              format: "json",
+              prop: "text",
+              page: redirect,
+              origin: "*",
+            }).toString();
+
+            const response = await fetch(apiUrl);
+            if (!response.ok) {
+              throw new Error(
+                `HTTP error! Status: ${response.status}, ${response.statusText}, ${apiUrl}`
+              );
+            }
+            const data = await response.json();
+            const page = data.parse;
+
+            if (!page || !page.text) {
+              continue;
+            }
+
+            // parse the html
+            const parser = new DOMParser();
+            doc = parser.parseFromString(page.text["*"], "text/html");
+          }
+        }
 
         // remove all images
         doc.querySelectorAll("img, style").forEach((el) => el.remove());
