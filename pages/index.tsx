@@ -63,8 +63,13 @@ async function cleanHtml(document: Document): Promise<Document> {
   return document;
 }
 
+async function isValidWikipediaUrl(urlString: string): Promise<boolean> {
+  return !!wikipediaUrlPattern.test(urlString);
+}
+
 export default function Home() {
   const [tracker, setTracker] = useState<[number, number]>([0, 0]);
+
   async function runPipeline(url: URL): Promise<void> {
     var zip = new JSZip();
     const parser = new DOMParser();
