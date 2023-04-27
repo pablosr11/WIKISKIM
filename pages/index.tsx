@@ -7,170 +7,133 @@ import JSZip from "jszip";
 
 const inter = Inter({ subsets: ["latin"] });
 const wikipediaUrlPattern = new RegExp(
-  "^https:\\/\\/(?:[a-z]+\\.)*wikipedia\\.org\\/wiki\\/[\\w\\-\\(\\)\\-]+$"
+  "^https:\\/\\/(?:[a-z]+\\.)*wikipedia\\.org\\/wiki\\/[A-zÀ-ÿ\\w\\-\\(\\)\\-\\_]+$"
 );
+const wikipediaApiUrl = new URL("https://en.wikipedia.org/w/api.php");
+
+async function getWikipediaHtml(articleTitle: string): Promise<string> {
+  wikipediaApiUrl.search = new URLSearchParams({
+    action: "parse",
+    format: "json",
+    prop: "text",
+    page: decodeURIComponent(articleTitle),
+    origin: "*",
+  }).toString();
+
+  const response = await fetch(wikipediaApiUrl);
+  if (!response.ok) {
+    throw new Error(
+      `HTTP error! Status: ${response.status} for ${wikipediaApiUrl} with ${articleTitle}`
+    );
+  }
+
+  const data = await response.json();
+  const page = data.parse;
+
+  if (!page || !page.text || !page.text["*"]) {
+    throw new Error(
+      `Payload error! Status: ${response.status} for ${wikipediaApiUrl} with ${articleTitle}`
+    );
+  }
+
+  const textContents = page.text["*"];
+
+  return textContents;
+}
+
+async function cleanHtml(document: Document): Promise<Document> {
+  // remove all images
+  document.querySelectorAll("img, video, style").forEach((el) => el.remove());
+
+  // remove all comments and multiline comments
+  document.querySelectorAll("body").forEach((el) => {
+    el.innerHTML = el.innerHTML.replace(/<!--[\s\S]*?-->/g, "");
+  });
+
+  // compress the whitespace in the html
+  document.querySelectorAll("body").forEach((el) => {
+    el.innerHTML = el.innerHTML.replace(/\s+/g, " ");
+  });
+
+  // remove all css classes
+  document.querySelectorAll("*").forEach((el) => {
+    el.removeAttribute("class");
+  });
+
+  return document;
+}
 
 export default function Home() {
   const [tracker, setTracker] = useState<[number, number]>([0, 0]);
-  async function getWikipediaHtml(url: URL): Promise<void> {
+  async function runPipeline(url: URL): Promise<void> {
     var zip = new JSZip();
-    const apiUrl = new URL("https://en.wikipedia.org/w/api.php");
+    const parser = new DOMParser();
+
     const title = url.pathname.split("/").pop();
     if (!title) throw new Error("missing title");
 
-    apiUrl.search = new URLSearchParams({
-      action: "parse",
-      format: "json",
-      prop: "text",
-      page: decodeURIComponent(title),
-      origin: "*",
-    }).toString();
-
-    const response = await fetch(apiUrl);
-    if (!response.ok) {
-      throw new Error(
-        `HTTP error! Status: ${response.status}, ${response.statusText}, ${apiUrl}`
-      );
-    }
-    const data = await response.json();
-    const page = data.parse;
+    const pageHtml = await getWikipediaHtml(title);
 
     // parse the html
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(page.text["*"], "text/html");
+    const doc = parser.parseFromString(pageHtml, "text/html");
 
-    // remove all images
-    doc.querySelectorAll("img, style").forEach((el) => el.remove());
+    await cleanHtml(doc);
 
-    // remove all css classes
-    doc.querySelectorAll("*").forEach((el) => {
-      el.removeAttribute("class");
-    });
-
-    // remove links with : any time after /wiki/
+    // remove all links except the ones for /wiki/ pages and no special categories
     doc.querySelectorAll("a").forEach((el) => {
       const href = el.getAttribute("href");
-      if (href && href.includes("/wiki/")) {
+      if (href && !href.includes("/wiki/")) {
+        el.removeAttribute("href");
+      } else if (href && href.includes("/wiki/")) {
         const parts = href.split(":");
         if (parts.length > 1) {
-          el.remove();
+          el.removeAttribute("href");
         }
       }
     });
 
-    // remove all links except the ones for /wiki/ pages
-    doc.querySelectorAll("a").forEach((el) => {
-      const href = el.getAttribute("href");
-      if (href && (!href.includes("/wiki/") || href.includes("File:"))) {
-        el.remove();
-      }
-    });
-
-    // remove all comments and multiline comments
-    doc.querySelectorAll("body").forEach((el) => {
-      el.innerHTML = el.innerHTML.replace(/<!--[\s\S]*?-->/g, "");
-    });
-
-    // compress the whitespace in the html
-    doc.querySelectorAll("body").forEach((el) => {
-      el.innerHTML = el.innerHTML.replace(/\s+/g, " ");
-    });
-
-    // download the html of all linked pages
-    const links = doc.querySelectorAll("a");
+    const links = doc.links;
 
     for (let i = 0; i < links.length; i++) {
       setTracker([i + 1, links.length + 1]);
       const link = links[i];
       const href = link.getAttribute("href");
-      if (href && href.includes("/wiki/")) {
-        const url = new URL(href, "https://en.wikipedia.org");
-        const title = url.pathname.split("/").pop();
-        if (!title) throw new Error("missing title");
+      if (!href) continue;
+      const url = new URL(href, "https://en.wikipedia.org");
+      const title = url.pathname.split("/").pop();
+      if (!title) throw new Error("missing title");
 
-        const apiUrl = new URL("https://en.wikipedia.org/w/api.php");
-        apiUrl.search = new URLSearchParams({
-          action: "parse",
-          format: "json",
-          prop: "text",
-          page: title,
-          origin: "*",
-        }).toString();
+      const pageHtml = await getWikipediaHtml(title);
 
-        const response = await fetch(apiUrl);
+      // parse the html
+      const parser = new DOMParser();
+      let doc = parser.parseFromString(pageHtml, "text/html");
 
-        if (!response.ok) {
-          throw new Error(
-            `HTTP error! Status: ${response.status}, ${response.statusText}, ${apiUrl}`
-          );
+      // if is less than 20kb, check if it contains "Redirect to:" then extract "/wiki/*" and download that
+      if (doc.documentElement.innerHTML.length < 20000) {
+        const redirect = doc
+          .querySelector("a")
+          ?.getAttribute("href")
+          ?.split("/wiki/")
+          .pop();
+        if (redirect) {
+          const pageHtml = await getWikipediaHtml(redirect);
+          doc = parser.parseFromString(pageHtml, "text/html");
         }
-
-        const data = await response.json();
-        const page = data.parse;
-
-        if (!page || !page.text) {
-          continue;
-        }
-
-        // parse the html
-        const parser = new DOMParser();
-        let doc = parser.parseFromString(page.text["*"], "text/html");
-
-        // if is less than 20kb, check if it contains "Redirect to:" then extract "/wiki/*" and download that
-        if (doc.documentElement.innerHTML.length < 20000) {
-          const redirect = doc
-            .querySelector("a")
-            ?.getAttribute("href")
-            ?.split("/wiki/")
-            .pop();
-          if (redirect) {
-            const apiUrl = new URL("https://en.wikipedia.org/w/api.php");
-            apiUrl.search = new URLSearchParams({
-              action: "parse",
-              format: "json",
-              prop: "text",
-              page: redirect,
-              origin: "*",
-            }).toString();
-
-            const response = await fetch(apiUrl);
-            if (!response.ok) {
-              throw new Error(
-                `HTTP error! Status: ${response.status}, ${response.statusText}, ${apiUrl}`
-              );
-            }
-            const data = await response.json();
-            const page = data.parse;
-
-            if (!page || !page.text) {
-              continue;
-            }
-
-            // parse the html
-            const parser = new DOMParser();
-            doc = parser.parseFromString(page.text["*"], "text/html");
-          }
-        }
-
-        // remove all images
-        doc.querySelectorAll("img, style").forEach((el) => el.remove());
-
-        // remove all css classes
-        doc.querySelectorAll("*").forEach((el) => {
-          el.removeAttribute("class");
-        });
-
-        // remove all targets from all links
-        doc.querySelectorAll("a").forEach((el) => {
-          el.removeAttribute("target");
-        });
-
-        const blob = new Blob([doc.documentElement.innerHTML], {
-          type: "text/html",
-        });
-
-        zip.folder("wiki")?.file(`${title}.html`, blob);
       }
+
+      await cleanHtml(doc);
+
+      // remove all targets from all links
+      doc.querySelectorAll("a").forEach((el) => {
+        el.removeAttribute("href");
+      });
+
+      const blob = new Blob([doc.documentElement.innerHTML], {
+        type: "text/html",
+      });
+
+      zip.folder("wiki")?.file(`${title}.html`, blob);
     }
 
     // add a "./" prefix to all links that contain /wiki/
@@ -190,6 +153,7 @@ export default function Home() {
     const content = await zip.generateAsync({ type: "blob" });
 
     saveAs(content, `${title}.zip`);
+    setTracker([0, 0]);
   }
 
   async function isValidWikipediaUrl(urlString: string): Promise<boolean> {
@@ -206,7 +170,7 @@ export default function Home() {
         onSubmit={async (values, { setSubmitting }) => {
           if (await isValidWikipediaUrl(values.wikiUrl)) {
             const url = new URL(values.wikiUrl);
-            await getWikipediaHtml(url);
+            await runPipeline(url);
           } else {
             alert("invalid wikipedia url");
           }
@@ -224,6 +188,7 @@ export default function Home() {
           >
             {!isSubmitting ? (
               <>
+                <label htmlFor="wikiUrl">wikipedia url</label>
                 <Field
                   className={"border border-slate-500 p-1 "}
                   type="text"
