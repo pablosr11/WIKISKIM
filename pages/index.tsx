@@ -152,17 +152,11 @@ export default function Home() {
     const blob = new Blob([doc.documentElement.innerHTML], {
       type: "text/html",
     });
-
     zip.file(`${title}.html`, blob);
 
     const content = await zip.generateAsync({ type: "blob" });
-
     saveAs(content, `${title}.zip`);
     setTracker([0, 0]);
-  }
-
-  async function isValidWikipediaUrl(urlString: string): Promise<boolean> {
-    return !!wikipediaUrlPattern.test(urlString);
   }
 
   return (
