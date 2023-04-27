@@ -58,14 +58,6 @@ export default function Home() {
       }
     });
 
-    // urldecode all links
-    doc.querySelectorAll("a").forEach((el) => {
-      const href = el.getAttribute("href");
-      if (href) {
-        el.setAttribute("href", decodeURIComponent(href));
-      }
-    });
-
     // remove all links except the ones for /wiki/ pages
     doc.querySelectorAll("a").forEach((el) => {
       const href = el.getAttribute("href");
