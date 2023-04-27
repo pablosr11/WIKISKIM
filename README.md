@@ -1,7 +1,7 @@
 ## Download wikipedia articles for offline reading
 
 ## TODO:
-- build + download epub instead of zip
+- table of contents in epub doesnt work + remove fake links in extra pages so they dont look clickeable. 
 - include images?
 - check other languages
 - what to do wrt "dangerous" articles?

@@ -24,11 +24,13 @@
     "react-dom": "18.2.0",
     "streamsaver": "^2.0.6",
     "tailwindcss": "3.3.1",
-    "typescript": "5.0.4"
+    "typescript": "5.0.4",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.5",
     "@types/streamsaver": "^2.0.1",
+    "@types/uuid": "^9.0.1",
     "prettier": "^2.8.8",
     "prettier-plugin-tailwindcss": "^0.2.7"
   }

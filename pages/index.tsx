@@ -2,6 +2,7 @@ import { saveAs } from "file-saver";
 import { ErrorMessage, Field, Form, Formik } from "formik";
 import { Inter } from "next/font/google";
 import { useState } from "react";
+import { v4 as uuid } from "uuid";
 
 import JSZip from "jszip";
 
@@ -31,9 +32,10 @@ async function getWikipediaHtml(articleTitle: string): Promise<string> {
   const page = data.parse;
 
   if (!page || !page.text || !page.text["*"]) {
-    throw new Error(
+    console.log(
       `Payload error! Status: ${response.status} for ${wikipediaApiUrl} with ${articleTitle}`
     );
+    return "";
   }
 
   const textContents = page.text["*"];
@@ -73,6 +75,10 @@ export default function Home() {
   async function runPipeline(url: URL): Promise<void> {
     var zip = new JSZip();
     const parser = new DOMParser();
+    const serializer = new XMLSerializer();
+
+    // childPages will be an array of objects with the title and html
+    const childPages: { title: string; content: string }[] = [];
 
     const title = url.pathname.split("/").pop();
     if (!title) throw new Error("missing title");
@@ -138,25 +144,122 @@ export default function Home() {
         type: "text/html",
       });
 
+      childPages.push({
+        title,
+        content: serializer.serializeToString(doc.documentElement),
+      });
+
       zip.folder("wiki")?.file(`${title}.html`, blob);
     }
 
-    // add a "./" prefix to all links that contain /wiki/
+    setTracker([0, 0]);
+
+    // EPUB GENERATION
+
+    // replace every anchor in doc to point to the section with id "Nucleic_acid"
     doc.querySelectorAll("a").forEach((el) => {
       const href = el.getAttribute("href");
-      if (href && href.includes("/wiki/")) {
-        el.setAttribute("href", `./${href}.html`);
-      }
+      if (!href) return;
+      const url = new URL(href, "https://en.wikipedia.org");
+      let title = url.pathname.split("/").pop();
+      if (!title) throw new Error("missing title");
+      title = title.replace(".html", "");
+      el.setAttribute("href", `#${title}`);
     });
 
-    const blob = new Blob([doc.documentElement.innerHTML], {
-      type: "text/html",
-    });
-    zip.file(`${title}.html`, blob);
+    const xmlString = serializer.serializeToString(doc.documentElement);
+    const epubZip = new JSZip();
+    const bookUUID = uuid().toUpperCase();
+    const mimetype = "application/epub+zip";
+    epubZip.file("mimetype", mimetype);
+    const container =
+      '<?xml version="1.0"?>' +
+      '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">' +
+      "  <rootfiles>" +
+      '    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml" />' +
+      "  </rootfiles>" +
+      "</container>";
+    epubZip.file("META-INF/container.xml", container);
+    const metadata =
+      '<?xml version="1.0"?>' +
+      '<package version="3.0" xml:lang="en" xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id">' +
+      '  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">' +
+      `    <dc:identifier id="book-id">urn:uuid:${bookUUID.toString()}</dc:identifier>` +
+      '    <meta refines="#book-id" property="identifier-type" scheme="xsd:string">uuid</meta>' +
+      '    <meta property="dcterms:modified">2000-03-24T00:00:00Z</meta>' +
+      "    <dc:language>en</dc:language>" +
+      `    <dc:title>${title}</dc:title>` +
+      "    <dc:creator>WikiSkim</dc:creator>" +
+      "  </metadata>" +
+      "  <manifest>" +
+      '    <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>' +
+      '    <item id="toc" href="../OEBPS/toc.ncx" media-type="application/x-dtbncx+xml"/>' +
+      "  </manifest>" +
+      '  <spine toc="toc">' +
+      '    <itemref idref="text"/>' +
+      "  </spine>" +
+      "</package>";
+    epubZip.file("OEBPS/content.opf", metadata);
+    const toc =
+      '<?xml version="1.0"?>' +
+      '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">' +
+      "  <head>" +
+      `    <meta name="dtb:uid" content="urn:uuid:${bookUUID.toString()}"/>` +
+      `    <meta name="dtb:depth" content="${links.length}"/>` +
+      `    <meta name="dtb:totalPageCount" content="${links.length}"/>` +
+      `    <meta name="dtb:maxPageNumber" content="${links.length}"/>` +
+      "  </head>" +
+      "  <docTitle>" +
+      `    <text>Table of contents for ${title}</text>` +
+      "  </docTitle>" +
+      "  <navMap>" +
+      '    <navPoint id="navpoint-1" playOrder="1">' +
+      "      <navLabel>" +
+      `        <text>${title}</text>` +
+      "      </navLabel>" +
+      "      <content src=\"text.xhtml#xpointer(id('Nucleic_acid'))\"/>" +
+      "    </navPoint>" +
+      childPages.map((page, index) => {
+        return (
+          '    <navPoint id="navpoint-' +
+          (index + 2) +
+          '" playOrder="' +
+          (index + 2) +
+          '">' +
+          "      <navLabel>" +
+          "        <text>" +
+          page.title +
+          "</text>" +
+          "      </navLabel>" +
+          '      <content src="text.xhtml#xpointer(/html/body/section[' +
+          (index + 2) +
+          '])"/>' +
+          "    </navPoint>"
+        );
+      }) +
+      "  </navMap>" +
+      "</ncx>";
+    epubZip.file("OEBPS/toc.ncx", toc);
+    var text =
+      '<?xml version="1.0" encoding="UTF-8" standalone="no"?>' +
+      "<!DOCTYPE html>" +
+      '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">' +
+      "  <head>" +
+      `    <title>${title}</title>` +
+      "  </head>" +
+      "  <body>" +
+      `    <section id="${title}"><h1>${title}</h1>${xmlString}</section>` +
+      childPages.map((page) => {
+        return `<section id="${page.title}"><h1>Chapter ${page.title}</h1>${page.content}</section>`;
+      }) +
+      "  </body>" +
+      "</html>";
+    epubZip.file("OEBPS/text.xhtml", text);
 
-    const content = await zip.generateAsync({ type: "blob" });
-    saveAs(content, `${title}.zip`);
-    setTracker([0, 0]);
+    // Generate a downloadable EPUB file from the ZIP file
+    epubZip.generateAsync({ type: "blob" }).then(function (blob) {
+      saveAs(blob, `${title}.epub`);
+    });
   }
 
   return (
