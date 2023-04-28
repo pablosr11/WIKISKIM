@@ -142,3 +142,52 @@ Here's an example of a simple `content.opf` file:
 ```
 
 The `metadata` section contains information about the e-book, such as title, author, language, and unique identifier. The `manifest` lists all the assets, including HTML chapters, images, fonts, CSS files, and scripts. The `spine` defines the default reading order of the chapters, and the `guide` (deprecated in EPUB 3) points to the cover, table of contents, and the beginning of the e-book's text.
+
+
+###
+### Ok now i want to generate epub v3, how? without external tools
+###
+Yes, you can create an EPUB 3 from your HTML files without using a tool. However, it requires some knowledge of the EPUB 3 specification and its file structure. Here's a high-level overview of the steps:
+
+1. Create a root directory for your EPUB 3 file, and add two mandatory files: `mimetype` and `META-INF/container.xml`. The `mimetype` file should contain the string "application/epub+zip" without any newline or whitespace characters, and the `container.xml` file should define the location of the `content.opf` file:
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+     <rootfiles>
+       <rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>
+     </rootfiles>
+   </container>
+   ```
+
+2. Create a subdirectory called `EPUB`, and add the `content.opf`, `toc.ncx`, and `META-INF` directories to it. The `content.opf` file should define the metadata, manifest, spine, and guide of your EPUB 3 file, as described in my previous answer. The `toc.ncx` file should define the table of contents, as described in my previous answer. The `META-INF` directory should contain the `container.xml` file described in step 1.
+
+3. Add your HTML files, images, CSS files, and fonts to the EPUB directory, and include them in the `manifest` section of the `content.opf` file. Use relative paths to reference the files.
+
+4. Optionally, add an EPUB cover image and a stylesheet to the `content.opf` file, as described in my previous answer.
+
+5. Zip the contents of the root directory, making sure that the `mimetype` file is the first file in the archive and that the archive has the `.epub` extension.
+
+Here's an example of a simple EPUB 3 file structure:
+
+```
+my-ebook.epub
+├── mimetype
+├── META-INF/
+│   └── container.xml
+└── EPUB/
+    ├── content.opf
+    ├── toc.ncx
+    ├── chapter1.html
+    ├── chapter2.html
+    ├── images/
+    │   ├── cover.jpg
+    │   └── image1.jpg
+    ├── css/
+    │   └── styles.css
+    └── fonts/
+        ├── font1.ttf
+        └── font2.ttf
+```
+
+This is just a basic example, and you may need to add more files or directories depending on the complexity of your EPUB 3 file. You should also ensure that your EPUB 3 file complies with the EPUB 3 specification, including its requirements for metadata, accessibility, and scripting, as described in the W3C's EPUB 3 Overview [Source 4].
