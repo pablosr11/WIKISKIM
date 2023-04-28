@@ -45,21 +45,78 @@ async function getWikipediaHtml(articleTitle: string): Promise<string> {
 
 async function cleanHtml(document: Document): Promise<Document> {
   // remove all images
-  document.querySelectorAll("img, video, style").forEach((el) => el.remove());
+  document
+    .querySelectorAll("img, video, style, table")
+    .forEach((el) => el.remove());
 
   // remove all comments and multiline comments
   document.querySelectorAll("body").forEach((el) => {
     el.innerHTML = el.innerHTML.replace(/<!--[\s\S]*?-->/g, "");
   });
 
-  // compress the whitespace in the html
-  document.querySelectorAll("body").forEach((el) => {
-    el.innerHTML = el.innerHTML.replace(/\s+/g, " ");
+  // find elements like this <span>[</span> and remove its parent span element
+  document.querySelectorAll("span").forEach((el) => {
+    if (el.innerHTML === "[") {
+      el.parentElement?.remove();
+    }
   });
 
   // remove all css classes
   document.querySelectorAll("*").forEach((el) => {
     el.removeAttribute("class");
+  });
+
+  // remove everything after the External_links section (included)
+  const externalLinks = document.querySelector("#External_links");
+  if (externalLinks && externalLinks.parentElement) {
+    let el = externalLinks.parentElement.nextElementSibling;
+    while (el) {
+      const nextEl = el.nextElementSibling;
+      el.remove();
+      el = nextEl;
+    }
+    externalLinks.remove();
+  }
+
+  // remove elements and child elements that specify a style width or display
+  document.querySelectorAll("*").forEach((el) => {
+    if (el.getAttribute("style")?.includes("width")) {
+      el.remove();
+    } else if (el.getAttribute("style")?.includes("display")) {
+      el.remove();
+    }
+  });
+
+  // remove ell div with role="note"
+  document.querySelectorAll('div[role="note"]').forEach((el) => {
+    el.remove();
+  });
+
+  // remove all link elements
+  document.querySelectorAll("link").forEach((el) => {
+    el.remove();
+  });
+
+  // remove ids from sup elements
+  document.querySelectorAll("sup").forEach((el) => {
+    el.removeAttribute("id");
+  });
+
+  // remove all title attributes
+  document.querySelectorAll("*").forEach((el) => {
+    el.removeAttribute("title");
+  });
+
+  // minimize the html
+  document.querySelectorAll("body").forEach((el) => {
+    el.innerHTML = el.innerHTML.replace(/\s+/g, " ");
+  });
+
+  // remove elements with no attributes and empty
+  document.querySelectorAll("*").forEach((el) => {
+    if (el.attributes.length === 0 && el.innerHTML === "") {
+      el.remove();
+    }
   });
 
   return document;
@@ -73,7 +130,7 @@ export default function Home() {
   const [tracker, setTracker] = useState<[number, number]>([0, 0]);
 
   async function runPipeline(url: URL): Promise<void> {
-    var zip = new JSZip();
+    // var zip = new JSZip();
     const parser = new DOMParser();
     const serializer = new XMLSerializer();
 
@@ -149,7 +206,7 @@ export default function Home() {
         content: serializer.serializeToString(doc.documentElement),
       });
 
-      zip.folder("wiki")?.file(`${title}.html`, blob);
+      // zip.folder("wiki")?.file(`${title}.html`, blob);
     }
 
     setTracker([0, 0]);
