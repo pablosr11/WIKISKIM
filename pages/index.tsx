@@ -12,35 +12,42 @@ const wikipediaUrlPattern = new RegExp(
 );
 const wikipediaApiUrl = new URL("https://en.wikipedia.org/w/api.php");
 
-async function getWikipediaHtml(articleTitle: string): Promise<string> {
+// function returns an object with title, url, and html
+async function getWikipediaHtml(
+  articleUrl: URL
+): Promise<{ title: string; textContents: string; articleUrl: URL }> {
+  const title = articleUrl.pathname.split("/").pop();
+  if (!title) throw new Error("missing title");
+
   wikipediaApiUrl.search = new URLSearchParams({
     action: "parse",
     format: "json",
     prop: "text",
-    page: decodeURIComponent(articleTitle),
+    page: decodeURIComponent(title),
     origin: "*",
   }).toString();
 
   const response = await fetch(wikipediaApiUrl);
   if (!response.ok) {
     throw new Error(
-      `HTTP error! Status: ${response.status} for ${wikipediaApiUrl} with ${articleTitle}`
+      `HTTP error! Status: ${response.status} for ${wikipediaApiUrl} with ${title}`
     );
   }
 
   const data = await response.json();
   const page = data.parse;
+  let textContents = "";
 
   if (!page || !page.text || !page.text["*"]) {
     console.log(
-      `Payload error! Status: ${response.status} for ${wikipediaApiUrl} with ${articleTitle}`
+      `Payload error! Status: ${response.status} for ${wikipediaApiUrl} with ${title}`
     );
-    return "";
+    textContents = "";
+  } else {
+    textContents = page.text["*"];
   }
 
-  const textContents = page.text["*"];
-
-  return textContents;
+  return { title, textContents, articleUrl };
 }
 
 async function cleanHtml(document: Document): Promise<Document> {
@@ -77,6 +84,19 @@ async function cleanHtml(document: Document): Promise<Document> {
     }
     externalLinks.remove();
   }
+
+  // remove all links except the ones for /wiki/ pages and no special categories
+  document.querySelectorAll("a").forEach((el) => {
+    const href = el.getAttribute("href");
+    if (href && !href.includes("/wiki/")) {
+      el.removeAttribute("href");
+    } else if (href && href.includes("/wiki/")) {
+      const parts = href.split(":");
+      if (parts.length > 1) {
+        el.removeAttribute("href");
+      }
+    }
+  });
 
   // remove elements and child elements that specify a style width or display
   document.querySelectorAll("*").forEach((el) => {
@@ -137,28 +157,12 @@ export default function Home() {
     // childPages will be an array of objects with the title and html
     const childPages: { title: string; content: string }[] = [];
 
-    const title = url.pathname.split("/").pop();
-    if (!title) throw new Error("missing title");
-
-    const pageHtml = await getWikipediaHtml(title);
+    const { title, textContents } = await getWikipediaHtml(url);
 
     // parse the html
-    const doc = parser.parseFromString(pageHtml, "text/html");
+    const doc = parser.parseFromString(textContents, "text/html");
 
     await cleanHtml(doc);
-
-    // remove all links except the ones for /wiki/ pages and no special categories
-    doc.querySelectorAll("a").forEach((el) => {
-      const href = el.getAttribute("href");
-      if (href && !href.includes("/wiki/")) {
-        el.removeAttribute("href");
-      } else if (href && href.includes("/wiki/")) {
-        const parts = href.split(":");
-        if (parts.length > 1) {
-          el.removeAttribute("href");
-        }
-      }
-    });
 
     const links = doc.links;
 
@@ -168,14 +172,11 @@ export default function Home() {
       const href = link.getAttribute("href");
       if (!href) continue;
       const url = new URL(href, "https://en.wikipedia.org");
-      const title = url.pathname.split("/").pop();
-      if (!title) throw new Error("missing title");
-
-      const pageHtml = await getWikipediaHtml(title);
+      const { title, textContents } = await getWikipediaHtml(url);
 
       // parse the html
       const parser = new DOMParser();
-      let doc = parser.parseFromString(pageHtml, "text/html");
+      let doc = parser.parseFromString(textContents, "text/html");
 
       // if is less than 20kb, check if it contains "Redirect to:" then extract "/wiki/*" and download that
       if (doc.documentElement.innerHTML.length < 20000) {
@@ -185,8 +186,9 @@ export default function Home() {
           ?.split("/wiki/")
           .pop();
         if (redirect) {
-          const pageHtml = await getWikipediaHtml(redirect);
-          doc = parser.parseFromString(pageHtml, "text/html");
+          const url = new URL(redirect, "https://en.wikipedia.org");
+          const { textContents } = await getWikipediaHtml(url);
+          doc = parser.parseFromString(textContents, "text/html");
         }
       }
 
