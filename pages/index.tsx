@@ -1,8 +1,11 @@
 import { saveAs } from "file-saver";
 import { ErrorMessage, Field, Form, Formik } from "formik";
 import { Inter } from "next/font/google";
+import pLimit from "p-limit";
 import { useState } from "react";
 import { v4 as uuid } from "uuid";
+
+const limit = pLimit(3); // limit to 3 concurrent promises
 
 import JSZip from "jszip";
 
@@ -64,7 +67,9 @@ async function getWikipediaHtml(articleUrl: URL): Promise<{
       return true;
     })
     .map((link: Element) => {
-      return new URL(link.getAttribute("href")!, "https://en.wikipedia.org");
+      // decode the url
+      const href = decodeURIComponent(link.getAttribute("href")!);
+      return new URL(href, "https://en.wikipedia.org");
     });
 
   return { title, textContents, articleUrl, doc, links };
@@ -178,50 +183,56 @@ export default function Home() {
 
     const { title, doc, links } = await getWikipediaHtml(url);
 
-    for (let i = 0; i < links.length; i++) {
-      setTracker([i + 1, links.length + 1]);
-      const url = links[i];
-      const { title, doc } = await getWikipediaHtml(url);
+    let i = 0;
 
-      // if is less than 20kb, check if it contains "Redirect to:" then extract "/wiki/*" and download that
-      if (doc.documentElement.innerHTML.length < 20000) {
-        const redirect = doc
-          .querySelector("a")
-          ?.getAttribute("href")
-          ?.split("/wiki/")
-          .pop();
+    // run getWikipediaHtml for each link in links.
+    //Run 3 at a time. Store the results in an array of objects with the title and html
+    const results = await Promise.allSettled(
+      links.map(async (url) => {
+        const { title, doc } = await limit(() => getWikipediaHtml(url));
+        console.log(url.pathname, title, decodeURIComponent(title));
+        i += 1;
+        setTracker([i, links.length + 1]);
+        let theHtml = doc;
 
-        if (redirect) {
-          const url = new URL(redirect, "https://en.wikipedia.org");
-          const { doc } = await getWikipediaHtml(url);
+        // follow internal redirects
+        // if is less than 20kb, check if it contains "Redirect to:"
+        // then extract "/wiki/*" and download that
+        if (
+          doc.documentElement.innerHTML.length < 20000 &&
+          doc.documentElement.innerHTML.includes("Redirect to:")
+        ) {
+          const redirect = doc
+            .querySelector("a")
+            ?.getAttribute("href")
+            ?.split("/wiki/")
+            .pop();
 
-          // remove all targets from all links
-          doc.querySelectorAll("a").forEach((el) => {
-            el.removeAttribute("href");
-          });
-
-          childPages.push({
-            title,
-            content: serializer.serializeToString(doc.documentElement),
-          });
-          continue;
+          if (redirect) {
+            const decodedRedirect = decodeURIComponent(redirect);
+            const url = new URL(decodedRedirect, "https://en.wikipedia.org");
+            const { doc } = await getWikipediaHtml(url);
+            theHtml = doc;
+          }
         }
+
+        // remove all targets from all links
+        theHtml.querySelectorAll("a").forEach((el) => {
+          el.removeAttribute("href");
+        });
+
+        return { title, doc: theHtml };
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        const { title, doc } = result.value;
+        childPages.push({
+          title: decodeURIComponent(title),
+          content: serializer.serializeToString(doc.documentElement),
+        });
       }
-
-      // remove all targets from all links
-      doc.querySelectorAll("a").forEach((el) => {
-        el.removeAttribute("href");
-      });
-
-      childPages.push({
-        title,
-        content: serializer.serializeToString(doc.documentElement),
-      });
-
-      // const blob = new Blob([doc.documentElement.innerHTML], {
-      //   type: "text/html",
-      // });
-      // zip.folder("wiki")?.file(`${title}.html`, blob);
     }
 
     setTracker([0, 0]);
