@@ -197,15 +197,14 @@ export default function Home() {
         el.removeAttribute("href");
       });
 
-      const blob = new Blob([doc.documentElement.innerHTML], {
-        type: "text/html",
-      });
-
       childPages.push({
         title,
         content: serializer.serializeToString(doc.documentElement),
       });
 
+      // const blob = new Blob([doc.documentElement.innerHTML], {
+      //   type: "text/html",
+      // });
       // zip.folder("wiki")?.file(`${title}.html`, blob);
     }
 
@@ -288,9 +287,7 @@ export default function Home() {
           page.title +
           "</text>" +
           "      </navLabel>" +
-          '      <content src="text.xhtml#xpointer(/html/body/section[' +
-          (index + 2) +
-          '])"/>' +
+          `      <content src="#${page.title}"/>` +
           "    </navPoint>"
         );
       }) +
