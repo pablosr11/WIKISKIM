@@ -8,6 +8,7 @@ import { v4 as uuid } from "uuid";
 const limit = pLimit(3); // limit to 3 concurrent promises
 
 import JSZip from "jszip";
+import Link from "next/link";
 
 const inter = Inter({ subsets: ["latin"] });
 const wikipediaUrlPattern = new RegExp(
@@ -429,16 +430,16 @@ export default function Home() {
           psiesta11
         </a>
       </p>
-      <a
+      <Link
         className={"animate-bounce"}
-        href="thanks"
+        href="/"
         onClick={(e) => {
           e.preventDefault();
           alert("thanks but not yet");
         }}
       >
         buy me un cafe
-      </a>
+      </Link>
     </main>
   );
 }
